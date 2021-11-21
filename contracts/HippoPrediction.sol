@@ -80,6 +80,8 @@ contract Raffle is Ownable, ReentrancyGuard, IRaffle {
     uint256 public currentRound; // current round for raffle round
     uint256 public ticketMultiplier; //this is the global ticket multiplier that will effect all tickets received from other contracts
 
+    uint256 public rewardTicketAmountForRaffleComplete = 10;
+
     struct Round {
         address[] entrants; //array of all entrants, winner will be picked by random index
         uint256 amount;  //total balance of round to send to the winner
@@ -123,13 +125,20 @@ contract Raffle is Ownable, ReentrancyGuard, IRaffle {
         emit SetVRFAddress(_vrfAddress, currentRound);
     }
 
+    function setRewardTicketAmountForRaffleComplete(uint256 _rewardTicketAmountForRaffleComplete) external onlyOwner {
+        rewardTicketAmountForRaffleComplete = _rewardTicketAmountForRaffleComplete;
+    }
+
     function pickWinner() external {
         require(block.timestamp >= rounds[currentRound-1].endTimestamp + minRoundDuration, "raffle cant be completed yet.");
 
         randomOracle.getRandom(currentRound);
-
+        
         //start new round, so new tickets enter correctly before random is fulfilled
         _startRound();
+
+        //give caller reward tickets
+        _addUserTicket(msg.sender, rewardTicketAmountForRaffleComplete);
     }
 
     function _startRound() internal {
@@ -152,7 +161,6 @@ contract Raffle is Ownable, ReentrancyGuard, IRaffle {
         emit RoundComplete(round.winner, currentRound-1, randomness);
     }
 
-
     function claimWinning(uint256 roundNo) external nonReentrant {
         Round storage round = rounds[roundNo];
         require(round.winner == msg.sender, "only the winner of this round can claim");
@@ -169,7 +177,7 @@ contract Raffle is Ownable, ReentrancyGuard, IRaffle {
         require(success, "TransferHelper: TRANSFER_FAILED");
     }
 
-    function addUserTicket(address _userAddress, uint256 ticketAmount) external override onlyAllowedContract {
+    function _addUserTicket(address _userAddress, uint256 ticketAmount) internal {
         //dont implement actions if ticketAmount is 0
         //dont revert as it might prevent betting or other actions on other contracts
         if(ticketAmount > 0){
@@ -185,6 +193,10 @@ contract Raffle is Ownable, ReentrancyGuard, IRaffle {
 
             emit AddTicket(_userAddress, ticketAmount, currentRound);
         }
+    }
+
+    function addUserTicket(address _userAddress, uint256 ticketAmount) external override onlyAllowedContract {
+        _addUserTicket(_userAddress, ticketAmount);
     }
 
     function addBalance() external payable override onlyAllowedContract {
@@ -276,6 +288,8 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
     IRaffle public raffle;
     uint256 public raffleTicketNormalizer = 10000000000000000;
     uint256 public raffleLogMultiplier = 15; //times 10
+    uint256 public rewardTicketAmountForExecuteRound = 10;
+    uint256 public rewardTicketAmountForCompleteVoting = 10;
     //------
 
     address public adminAddress; // address of the admin
@@ -305,16 +319,15 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
     //----------------
 
     //voting variables
-    address[] public allOracles;
     mapping(address => bool) public oracleExistence;
-    uint256 public selectedOracleIndex;
+    address public selectedOracle;
+    address public maxVotedOracle;
     uint256 public latestOracleUpdateTimestamp;
     uint256 public constant oracleVotingPeriod = 180;//604800; //1 week in seconds
-    uint256 public maxVotedOracleIndex;
     uint256 public maxOracleVote;
-    uint256 public oracleVoteRound;
+    uint256 public currentOracleVoteRound;
     mapping(uint256 => mapping(address => bool)) public userVoteRounds; //[roundNo][userAddress]
-    mapping(uint256 => mapping(uint256 => uint256)) public oracleVotes; //[roundNo][oracleIndex]
+    mapping(uint256 => mapping(address => uint256)) public oracleVotes; //[roundNo][oracleAddress]
     //----------------
 
     enum Position {
@@ -410,10 +423,9 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
         require(_raffleRate + _referrerBonus + _refereeBonus <= 100, "cant be higher than 100%");
         require(_oraclesList.length > 0, "Oracles List is empty");
 
-        allOracles = _oraclesList;
-        selectedOracleIndex = 0;
-        for (uint256 i = 0; i < allOracles.length; i++) { 
-            oracleExistence[allOracles[i]] = true;       
+        selectedOracle = _oraclesList[0];
+        for (uint256 i = 0; i < _oraclesList.length; i++) { 
+            oracleExistence[_oraclesList[i]] = true;       
         }
 
         adminAddress = msg.sender;
@@ -460,65 +472,34 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
     //------------------------
     //ORACLE VOTING FUNCTIONS
 
-    function addOracle(address _oracleAddress) external onlyAdmin {
-        require(!oracleExistence[_oracleAddress], "oracle is already available");
-        allOracles.push(_oracleAddress);
-        oracleExistence[_oracleAddress] = true;
-        // Dummy check to make sure the interface implements this function properly
-        AggregatorV3Interface(_oracleAddress).latestRoundData();
+    function addOracle(address[] memory _oraclesList) external onlyAdmin {
+        for (uint256 i = 0; i < _oraclesList.length; i++) { 
+            oracleExistence[_oraclesList[i]] = true;       
+            // Dummy check to make sure the interface implements this function properly
+            AggregatorV3Interface(_oraclesList[i]).latestRoundData();
 
-        emit AddOracle(_oracleAddress, currentEpoch);
+            emit AddOracle(_oraclesList[i], currentOracleVoteRound);
+        }
     }
 
-    function removeOracle(uint256 _oracleIndex) external onlyAdmin {
-        require(oracleExistence[allOracles[_oracleIndex]], "oracle is not found");
-        require(selectedOracleIndex != _oracleIndex, "you cant delete selected oracle, wait for next round");
-        uint256 lastItemIndex = allOracles.length - 1;
-        address removedOracle = allOracles[_oracleIndex];
-        oracleExistence[removedOracle] = false;
+    function removeOracle(address[] memory _oraclesList) external onlyAdmin {
+        for (uint256 i = 0; i < _oraclesList.length; i++) { 
+            oracleExistence[_oraclesList[i]] = false;       
 
-        //move last item to the deleted item's array location
-        if(_oracleIndex != lastItemIndex){
-            if(selectedOracleIndex != lastItemIndex){
-                selectedOracleIndex = _oracleIndex;
-            }
-            removedOracle = allOracles[lastItemIndex];
+            emit RemoveOracle(_oraclesList[i], currentOracleVoteRound);
         }
-        delete allOracles[lastItemIndex];
-
-        emit RemoveOracle(removedOracle, currentEpoch);
-    }
-
-    //updates whole oracles array
-    function setOraclesList(address[] memory _oraclesList) external onlyAdmin {
-        require(_oraclesList.length > selectedOracleIndex &&
-                _oraclesList[selectedOracleIndex] == allOracles[selectedOracleIndex], "new oracles list must contain current oracle on same index");
-        
-        for (uint256 i = 0; i < allOracles.length; i++) { 
-            oracleExistence[allOracles[i]] = false;       
-        }
-
-        allOracles = _oraclesList;
-
-        for (uint256 i = 0; i < allOracles.length; i++) { 
-            oracleExistence[allOracles[i]] = true;       
-        }
-
-        emit SetOraclesList(currentEpoch);
     }
 
     //admin sets the new oracle in case there is a problem with the oracle
-    function emergencySetNewOracle(uint256 _oracleIndex) external onlyAdmin {
-        require(_oracleIndex >=0 && _oracleIndex < allOracles.length, "oracle index is not available");
+    function emergencySetNewOracle(address _oracleAddress) external onlyAdmin {
+        require(oracleExistence[_oracleAddress], "oracle is not available");
 
-        selectedOracleIndex = _oracleIndex;
+        selectedOracle = _oracleAddress;
         latestOracleUpdateTimestamp = block.timestamp;
         maxOracleVote = 0;
-        oracleVoteRound = oracleVoteRound + 1;
+        currentOracleVoteRound = currentOracleVoteRound + 1;
 
-        address oracle = allOracles[_oracleIndex];
-
-        emit EmergencySetNewOracle(oracle, currentEpoch);
+        emit EmergencySetNewOracle(_oracleAddress, currentOracleVoteRound);
     }
 
     //once the voting period is over, anyonce can call this function and complete the voting
@@ -526,33 +507,31 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
     //live round that was locked with old oracle will still get its ending price from the previous oracle
     function completeOracleVoting() external {
         require(block.timestamp >= latestOracleUpdateTimestamp + oracleVotingPeriod, "Voting is not over yet");
-        require(maxVotedOracleIndex < allOracles.length, "No votes");
 
-        selectedOracleIndex = maxVotedOracleIndex;
+        selectedOracle = maxVotedOracle;
         latestOracleUpdateTimestamp = block.timestamp;
         maxOracleVote = 0;
-        oracleVoteRound = oracleVoteRound + 1;
+        currentOracleVoteRound = currentOracleVoteRound + 1;
 
-        address oracle = allOracles[selectedOracleIndex];
+        //give reward to the caller
+        raffle.addUserTicket(msg.sender, rewardTicketAmountForCompleteVoting);
 
-        emit CompleteOracleVoting(oracle, maxOracleVote, currentEpoch);
+        emit CompleteOracleVoting(selectedOracle, maxOracleVote, currentOracleVoteRound);
     }
 
     //community can vote for the new oracle. every user can vote once
-    function voteForNewOracle(uint256 _oracleIndex) external {
-        //require(!userVoteRounds[oracleVoteRound][msg.sender], "you have already voted");
-        require(_oracleIndex >=0 && _oracleIndex < allOracles.length, "oracle index is not available");
+    function voteForNewOracle(address _oracleAddress) external {
+        //require(!userVoteRounds[currentOracleVoteRound][msg.sender], "you have already voted");
+        require(oracleExistence[_oracleAddress], "oracle is not available");
         
-        userVoteRounds[oracleVoteRound][msg.sender] = true;
-        oracleVotes[oracleVoteRound][_oracleIndex]++;
-        if( oracleVotes[oracleVoteRound][_oracleIndex] > maxOracleVote){
-             maxOracleVote = oracleVotes[oracleVoteRound][_oracleIndex];
-             maxVotedOracleIndex = _oracleIndex;
+        userVoteRounds[currentOracleVoteRound][msg.sender] = true;
+        oracleVotes[currentOracleVoteRound][_oracleAddress]++;
+        if(oracleVotes[currentOracleVoteRound][_oracleAddress] > maxOracleVote){
+             maxOracleVote = oracleVotes[currentOracleVoteRound][_oracleAddress];
+             maxVotedOracle = _oracleAddress;
         }
 
-        address oracle = allOracles[_oracleIndex];
-
-        emit OracleVote(msg.sender, oracle, currentEpoch);
+        emit OracleVote(msg.sender, _oracleAddress, currentOracleVoteRound);
     }
     //------------------------
     //------------------------
@@ -574,10 +553,18 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
         raffleLogMultiplier = _raffleLogMultiplier;
     }
 
+    function setRewardTicketAmountForExecuteRound(uint256 _rewardTicketAmountForExecuteRound) external onlyAdmin {
+        rewardTicketAmountForExecuteRound = _rewardTicketAmountForExecuteRound;
+    }
+
+    function setRewardTicketAmountForCompleteVoting(uint256 _rewardTicketAmountForCompleteVoting) external onlyAdmin {
+        rewardTicketAmountForCompleteVoting = _rewardTicketAmountForCompleteVoting;
+    }
+
     function _addUserTicket(address _userAddress, uint256 _amount) internal {
         //add user tickets to the raffle system
-        //if raffleTicketNormalizer==1eth, 1 ticket per 1 eth bet, roundUp
-        //the amount is also multiplied by raffleBetMultiplier to promote betting on more rounds
+        //log2 function is used to have a higher bonus for simply betting on a round
+        //to incentive betting on multiple rounds instead of a single round
         uint256 ticketAmount = (raffleLogMultiplier * log2x(_amount / raffleTicketNormalizer) / 10) + 1;
         raffle.addUserTicket(_userAddress, ticketAmount);
     }
@@ -779,6 +766,9 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
 
         currentEpoch = currentEpoch + 1;
         _startRound(currentEpoch);
+
+        //give reward to the caller
+        raffle.addUserTicket(msg.sender, rewardTicketAmountForExecuteRound);
     }
 
     function _lockCurrentRound(uint80 oracleRoundId, int256 price, uint256 oracleUpdatedAt) internal {
@@ -823,7 +813,7 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
         ts.lockTimestamp = uint32(block.timestamp) + intervalSeconds;
         ts.closeTimestamp = uint32(block.timestamp) + (intervalSeconds * 2);
 
-        rounds[epoch].oracleAddress = allOracles[selectedOracleIndex];
+        rounds[epoch].oracleAddress = selectedOracle;
 
         emit StartRound(epoch);
     }
@@ -1095,7 +1085,6 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
             block.timestamp > timestamps[epoch].startTimestamp &&
             block.timestamp < timestamps[epoch].lockTimestamp;
     }
-
 
     /**
      * @notice Returns true if `account` is a contract.
