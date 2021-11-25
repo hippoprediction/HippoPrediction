@@ -756,7 +756,6 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
         _lockCurrentRound(roundId, price, updatedAt);
 
         //end and calculate the live round only if it was not cancelled on locking
-        //or it was not already calculated by public by calling endAndCalculateRound(roundNumber) 
         Round storage liveRound = rounds[currentEpoch-1];
         if(!liveRound.cancelled && !liveRound.oracleCalled){
             (roundId, price, updatedAt) = _getOracleDataForPreviousRound(currentEpoch-1);
@@ -794,19 +793,6 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
         }
     }
 
-    function endAndCalculateRound(uint256 epoch) external {
-        require(!rounds[epoch].cancelled, "round is cancelled");
-        require(!rounds[epoch].oracleCalled, "already calculated");
-        require(rounds[epoch].lockPrice > 0, 'not locked');
-        require(epoch < currentEpoch, 'you cant end current round, use execute round to lock');
-        require(block.timestamp >= timestamps[epoch].closeTimestamp, 'early');
-
-        (uint80 roundId, int256 price, uint256 updatedAt) = _getOracleDataForPreviousRound(epoch);
-        
-        _endRound(epoch, roundId, price, updatedAt);
-        _calculateRewards(epoch);
-    }
-
     function _startRound(uint256 epoch) internal {
         Timestamps storage ts = timestamps[epoch];
         ts.startTimestamp = uint32(block.timestamp);
@@ -823,12 +809,22 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
         int256 price;
         uint256 updatedAt;
 
+        uint80 _roundId;
+        int256 _price;
+        uint256 _updatedAt;
+
         AggregatorV3Interface oracle = AggregatorV3Interface(rounds[epoch].oracleAddress);
 
-        (roundId, price, , updatedAt, ) = oracle.latestRoundData();
+        _roundId = rounds[epoch].lockOracleId;
+        (_roundId, _price, , _updatedAt, ) = oracle.getRoundData(_roundId + 1);
 
-        while (updatedAt > timestamps[epoch].closeTimestamp) {
-            (roundId, price, , updatedAt, ) = oracle.getRoundData(roundId-1);
+        while (_updatedAt < timestamps[epoch].closeTimestamp) {
+            if(_updatedAt > timestamps[epoch].closeTimestamp){
+                roundId = _roundId;
+                price = _price;
+                updatedAt = _updatedAt;
+            }
+            (_roundId, _price, , _updatedAt, ) = oracle.getRoundData(_roundId+1);
         }
 
         return (roundId, price, updatedAt);

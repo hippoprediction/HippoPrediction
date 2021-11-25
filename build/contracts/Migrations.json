@@ -1456,12 +1456,12 @@
     "80001": {
       "events": {},
       "links": {},
-      "address": "0x63464c2eb9eA25A8d776DC7E054a251b12488F81",
-      "transactionHash": "0x6ad90f4485deb4ed79b9af9aed66194687e16fecbadc4b9eaacf72ee4833ea00"
+      "address": "0xB49D3b04790b6891B2c6A6B309822C7e88bAD655",
+      "transactionHash": "0xdcb02ddb3fd3e688cd3aa451ae955dec0cf350362f27d74855bcfa551ca36aac"
     }
   },
   "schemaVersion": "3.4.2",
-  "updatedAt": "2021-11-20T06:27:35.578Z",
+  "updatedAt": "2021-11-24T16:56:50.297Z",
   "networkType": "ethereum",
   "devdoc": {
     "kind": "dev",

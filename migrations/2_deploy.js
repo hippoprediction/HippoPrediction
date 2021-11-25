@@ -6,12 +6,15 @@ const Reference = artifacts.require("Reference");
 module.exports = async function(deployer, network, accounts) {
     await deployer.deploy(Reference);
     const reference = await Reference.deployed();
+    //const reference = await Reference.at('0x1A1ffD9c02d9672D3F2531E037501c5500BB7285');
 
     await deployer.deploy(Raffle, 1800);
     const raffle = await Raffle.deployed();
+    //const raffle = await Raffle.at('0x6Fc26D9BB64c1FAD574469D54899C0b51Bc28385');
 
-    await deployer.deploy(RandomNumberConsumer, raffle.address);
-    const vrf = await RandomNumberConsumer.deployed();
+    //await deployer.deploy(RandomNumberConsumer, raffle.address);
+    //const vrf = await RandomNumberConsumer.deployed();
+    const vrf = await RandomNumberConsumer.at('0x360ad85e11F234b48609d7F96e43a265B832926B');
 
 
     const oracleAddresses = ["0xB8ce593E3C94Ad25Bc87D7e3e484C98A4A82335E",
