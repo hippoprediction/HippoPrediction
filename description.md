@@ -48,3 +48,15 @@ Every user that referred others; will get a portion of those users' betting comm
 The core of our system is to bet if the price of a target token is going up or down in the next 5 minutes. Although it is quite fun to bet on any token, in the Pancakeswap system, target token is selected by the privileged accounts. **We believe it should be selected by the community.**
 
 Thanks to more than 60 Chainlink Pricefeed Oracles on Polygon updating every 27 seconds, we implemented a voting system to let our community decide on the target token. Whenever the voting round ends, the most voted Chainlink oracle takes up the place and starts feeding the new rounds’ price.
+---
+
+# Tech Stack
+
+Thanks to the sponsors of Chainlink Hackathon, we were able to implement our strategy.
+
+| Technology | Description |
+| ------ | ------ |
+| Polygon | Thanks to the fast transactions and low gas cost, the game runs smoothly and with less burden to the users |
+| Chainlink PriceFeeds | Getting data from 60+ Chainlink Pricefeed Oracles. The target oracle is chosen by the community |
+| Chainlink VRF | Getting random from Chainlink VRF Oracle for the Raffle System |
+| Moralis | Thanks to syncing our contract events to the Moralis Database; we were able to get and calculate the data required for frontend. Especially on leaderboard, raffle and voting statistics and data. | 
