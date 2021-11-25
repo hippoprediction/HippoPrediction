@@ -45,9 +45,10 @@ Every user that referred others; will get a portion of those users' betting comm
 ---
 ## C - Community Decisions
 
-The core of our system is to bet if the price of a target token is going up or down in the next 5 minutes. Although it is quite fun to bet on any token, in the Pancakeswap system, target token is selected by the privileged accounts. **We believe it should be selected by the community.**
+The core of our system is to bet if the price of a target token is going up or down in the next 5 minutes. Although it is quite fun to bet on any token, in the Pancakeswap system, target token is selected by the privileged accounts. We believe it should be selected by the community. 
 
 Thanks to more than 60 Chainlink Pricefeed Oracles on Polygon updating every 27 seconds, we implemented a voting system to let our community decide on the target token. Whenever the voting round ends, the most voted Chainlink oracle takes up the place and starts feeding the new rounds’ price.
+
 ---
 
 # Tech Stack
