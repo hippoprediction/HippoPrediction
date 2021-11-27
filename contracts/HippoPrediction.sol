@@ -323,7 +323,7 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
     address public selectedOracle;
     address public maxVotedOracle;
     uint256 public latestOracleUpdateTimestamp;
-    uint256 public constant oracleVotingPeriod = 180;//604800; //1 week in seconds
+    uint256 public oracleVotingPeriod = 604800; //1 week in seconds
     uint256 public maxOracleVote;
     uint256 public currentOracleVoteRound;
     mapping(uint256 => mapping(address => bool)) public userVoteRounds; //[roundNo][userAddress]
@@ -388,6 +388,7 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
     event NewMinBetAmount(uint256 indexed epoch, uint256 minBetAmount);
     event NewTreasuryFee(uint256 indexed epoch, uint256 treasuryFee);
     event NewOracle(address oracle);
+    event SetOracleVotingPeriod(uint256 votingPeriod, uint256 indexed epoch);
 
     event RewardsCalculated(uint256 indexed epoch, uint8 roundResultPosition, uint256 rewardBaseCalAmount, uint256 rewardAmount, uint256 treasuryAmount);
 
@@ -490,16 +491,10 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
         }
     }
 
-    //admin sets the new oracle in case there is a problem with the oracle
-    function emergencySetNewOracle(address _oracleAddress) external onlyAdmin {
-        require(oracleExistence[_oracleAddress], "oracle is not available");
+    function setOracleVotingPeriod(uint256 _votingPeriod) external onlyAdmin {
+        oracleVotingPeriod = _votingPeriod;
 
-        selectedOracle = _oracleAddress;
-        latestOracleUpdateTimestamp = block.timestamp;
-        maxOracleVote = 0;
-        currentOracleVoteRound = currentOracleVoteRound + 1;
-
-        emit EmergencySetNewOracle(_oracleAddress, currentOracleVoteRound);
+        emit SetOracleVotingPeriod(_votingPeriod, currentOracleVoteRound);
     }
 
     //once the voting period is over, anyonce can call this function and complete the voting
@@ -521,7 +516,7 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
 
     //community can vote for the new oracle. every user can vote once
     function voteForNewOracle(address _oracleAddress) external {
-        //require(!userVoteRounds[currentOracleVoteRound][msg.sender], "you have already voted");
+        require(!userVoteRounds[currentOracleVoteRound][msg.sender], "you have already voted");
         require(oracleExistence[_oracleAddress], "oracle is not available");
         
         userVoteRounds[currentOracleVoteRound][msg.sender] = true;
@@ -567,12 +562,6 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
         //to incentive betting on multiple rounds instead of a single round
         uint256 ticketAmount = (raffleLogMultiplier * log2x(_amount / raffleTicketNormalizer) / 10) + 1;
         raffle.addUserTicket(_userAddress, ticketAmount);
-    }
-
-    //to be removed - testing the log2 results
-    function getLogAmount(uint256 amount) public view returns (uint){
-        uint test = (raffleLogMultiplier * log2x(amount / raffleTicketNormalizer) / 10) + 1;
-        return test;
     }
 
     function log2x(uint x) public pure returns (uint y){
@@ -711,11 +700,12 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
 
             uint256 addedReward = 0;
             BetInfo storage betInfo = ledger[epochs[i]][msg.sender];
+            Round memory round = rounds[epochs[i]];
 
             // Round valid, claim rewards
-            if (rounds[epochs[i]].oracleCalled) {
+            if (round.oracleCalled && !round.cancelled) {
                 require(claimable(epochs[i], msg.sender), "Not eligible for claim");
-                Round memory round = rounds[epochs[i]];
+                
                 //add referee bonus to the addedRewards on claim
                 addedReward = (betInfo.amount * round.rewardAmount) / round.rewardBaseCalAmount + betInfo.refereeAmount;
                 
