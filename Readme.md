@@ -35,6 +35,15 @@ Whenever a user makes a bet; they get tickets for the Raffle round depending on 
 
 This contract then will pick a winner among the ticket owners (everyone has a chance of ticketCount/totalTicketCount) using Chainlink VRF. All the raffle part of the commissions will be given to one lucky user.
 
+In order to encourage users to bet on multiple rounds instead of a single large bet on a single round; therefore creating a more active community, we incetivised lower bets. We implemented log2 algorithm to decrease the amount of extra ticket as the bet amount increase.
+
+An example of ticket distribution depending on the multipliers is as follows: 
+0.01 matic : 1 ticket
+0.1 matic :  7 tickets
+1 matic : 11 tickets
+10 matic : 16 tickets
+100 matic : 22 tickets
+
 ### -Reference System:
 As a community based system, we want to grow our community with their references. Therefore we give back the commission fees to referrers and referees.
 
