@@ -799,22 +799,24 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
         int256 price;
         uint256 updatedAt;
 
-        uint80 _roundId;
-        int256 _price;
-        uint256 _updatedAt;
-
         AggregatorV3Interface oracle = AggregatorV3Interface(rounds[epoch].oracleAddress);
 
-        _roundId = rounds[epoch].lockOracleId;
-        (_roundId, _price, , _updatedAt, ) = oracle.getRoundData(_roundId + 1);
+        roundId = rounds[epoch].lockOracleId;
 
-        while (_updatedAt < timestamps[epoch].closeTimestamp) {
-            if(_updatedAt > timestamps[epoch].closeTimestamp){
-                roundId = _roundId;
-                price = _price;
-                updatedAt = _updatedAt;
+        if(roundId > 0){
+            (roundId, price, , updatedAt, ) = oracle.getRoundData(roundId + 1);
+
+            while (updatedAt < timestamps[epoch].closeTimestamp) {
+                (roundId, price, , updatedAt, ) = oracle.getRoundData(roundId+1);
             }
-            (_roundId, _price, , _updatedAt, ) = oracle.getRoundData(_roundId+1);
+            (roundId, price, , updatedAt, ) = oracle.getRoundData(roundId-1);
+        }
+        else {
+            (roundId, price, , updatedAt, ) = oracle.latestRoundData();
+
+            while (updatedAt > timestamps[epoch].closeTimestamp) {
+                (roundId, price, , updatedAt, ) = oracle.getRoundData(roundId-1);
+            }
         }
 
         return (roundId, price, updatedAt);
@@ -827,6 +829,7 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
         if(ts.startTimestamp == 0 ||
             oracleUpdatedAt > ts.closeTimestamp ||
             oracleUpdatedAt < ts.lockTimestamp){
+            round.closeOracleId = oracleRoundId;
             round.cancelled = true;
 
             emit CancelRound(epoch);
@@ -1030,7 +1033,7 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
                 treasuryAmt = treasuryAmt - round.bearBonusAmount;
                 roundResultPosition = uint8(Position.Bear);
             }
-            // House wins
+            // Refund on same price
             else {
                 rewardBaseCalAmount = 0;
                 rewardAmount = 0;
