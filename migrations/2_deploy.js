@@ -4,6 +4,10 @@ const Raffle = artifacts.require("Raffle");
 const Reference = artifacts.require("Reference");
 
 module.exports = async function(deployer, network, accounts) {
+
+
+    //mumbai version
+    /*
     await deployer.deploy(Reference);
     const reference = await Reference.deployed();
     //const reference = await Reference.at('0x1A1ffD9c02d9672D3F2531E037501c5500BB7285');
@@ -36,6 +40,6 @@ module.exports = async function(deployer, network, accounts) {
     console.log('Reference: ',reference.address);
     console.log('Raffle: ',raffle.address);
     console.log('RandomNumberConsumer: ',vrf.address);
-    
+    */
 };
     

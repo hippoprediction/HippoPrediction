@@ -428,6 +428,7 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
         for (uint256 i = 0; i < _oraclesList.length; i++) { 
             oracleExistence[_oraclesList[i]] = true;       
         }
+        latestOracleUpdateTimestamp = block.timestamp;
 
         adminAddress = msg.sender;
         intervalSeconds = _intervalSeconds;
@@ -804,12 +805,20 @@ contract HippoPrediction is Ownable, ReentrancyGuard {
         roundId = rounds[epoch].lockOracleId;
 
         if(roundId > 0){
-            (roundId, price, , updatedAt, ) = oracle.getRoundData(roundId + 1);
+            (uint80 latestRoundId, , , , ) = oracle.latestRoundData();
 
-            while (updatedAt < timestamps[epoch].closeTimestamp) {
-                (roundId, price, , updatedAt, ) = oracle.getRoundData(roundId+1);
+            if(roundId+1 <= latestRoundId){
+                (uint80 _roundId, int256 _price, , uint256 _updatedAt, ) = oracle.getRoundData(roundId+1);
+
+                while (_updatedAt < timestamps[epoch].closeTimestamp && (roundId+1) <= latestRoundId) {
+                    (_roundId, _price, , _updatedAt, ) = oracle.getRoundData(roundId+1);
+                    if(_updatedAt < timestamps[epoch].closeTimestamp){
+                        roundId = _roundId;
+                        price = _price;
+                        updatedAt = _updatedAt;
+                    }
+                }
             }
-            (roundId, price, , updatedAt, ) = oracle.getRoundData(roundId-1);
         }
         else {
             (roundId, price, , updatedAt, ) = oracle.latestRoundData();

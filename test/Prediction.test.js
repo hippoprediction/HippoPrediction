@@ -44,22 +44,11 @@ contract('HippoPrediction', ([owner, investor1, investor2, investor3, investor4]
         raffle.addAllowedAddress(prediction.address);
     })
 
-    it('log2x check', async () => {
-        let l;
-        let t = 0.01;
-        for(let i =0; i< 10; i++){
-            l = await prediction.getLogAmount(tokens(t.toString()));
-            console.log('tickets for bet '+t+ ' : ' +l.toString());
-            t*=5;
-        }
-    })
-
     it('oracle returns a price', async () => {
         assert.equal(await priceConsumerV3.getLatestPrice(), price)
     })
 
     it('bet bull wins', async () => {
-
         await time.increase(10);
         await mockPriceFeed.updateAnswer(tokens('3'));
 
@@ -75,33 +64,21 @@ contract('HippoPrediction', ([owner, investor1, investor2, investor3, investor4]
         await mockPriceFeed.updateAnswer(tokens('2'));
         await time.increase(10);
 
-        //console.log(await web3.eth.getBalance(raffle.address));
-        //console.log(await web3.eth.getBalance(prediction.address));
-        
-
-        await prediction.executeRound({from:investor1});
-
-
-        //console.log(await web3.eth.getBalance(raffle.address));
-        //console.log(await web3.eth.getBalance(prediction.address));
+        await prediction.executeRound();
 
         await mockPriceFeed.updateAnswer(tokens('3'));
 
-        await time.increase(12);
+        await time.increase(10);
+
         await prediction.executeRound();
 
-        //assert.equal(await prediction.claimable(currentRound, investor1), false);
-        //assert.equal(await prediction.claimable(currentRound, investor2), true);
-
-
-        //console.log(await web3.eth.getBalance(raffle.address));
-        //console.log(await web3.eth.getBalance(prediction.address));
-
-        await prediction.claim([currentRound], {from:investor2});
-
+        assert.equal(await prediction.claimable(currentRound, investor1), false);
+        assert.equal(await prediction.claimable(currentRound, investor2), true);
     })
 
-    it('price stays same, both lose', async () => {
+
+    
+    it('price stays same, refund', async () => {
 
         await time.increase(10);
         await mockPriceFeed.updateAnswer(tokens('2'));
@@ -124,9 +101,11 @@ contract('HippoPrediction', ([owner, investor1, investor2, investor3, investor4]
 
         assert.equal(await prediction.claimable(currentRound, investor1), false);
         assert.equal(await prediction.claimable(currentRound, investor2), false);
+        assert.equal(await prediction.refundable(currentRound, investor1), false);
+        assert.equal(await prediction.refundable(currentRound, investor2), false);
     })
 
-    it('round couldnt execute, check refund', async () => {
+    it('price didnt update, check refund', async () => {
 
         await mockPriceFeed.updateAnswer(tokens('2'));
 
@@ -138,26 +117,91 @@ contract('HippoPrediction', ([owner, investor1, investor2, investor3, investor4]
         await prediction.betBear(currentRound, {from:investor1, value:tokens('1')});
         await prediction.betBull(currentRound, {from:investor2, value:tokens('1')});
 
-        await time.increase(5);
+        await time.increase(10);
         await prediction.executeRound();
 
+        await time.increase(11);
+        await prediction.executeRound();
 
-        // await time.increase(11);
+        await time.increase(11);
 
-        // prediction.executeRound();
-
-        // await time.increase(11);
-
-        // prediction.executeRound();
-
-        // assert.equal(await prediction.claimable(currentRound, investor1), false);
-        // assert.equal(await prediction.claimable(currentRound, investor2), false);
-        // assert.equal(await prediction.refundable(currentRound, investor1), true);
-        // assert.equal(await prediction.refundable(currentRound, investor2), true);
-
-        // await prediction.claim([currentRound], {from:investor1});
-        // await prediction.claim([currentRound], {from:investor2});
-
+        assert.equal(await prediction.claimable(currentRound, investor1), false);
+        assert.equal(await prediction.claimable(currentRound, investor2), false);
+        assert.equal(await prediction.refundable(currentRound, investor1), true);
+        assert.equal(await prediction.refundable(currentRound, investor2), true);
     })
 
+    it('price updated every round, round is not cancelled', async () => {
+
+        await mockPriceFeed.updateAnswer(tokens('2'));
+
+        await time.increase(10);
+        await prediction.executeRound();
+
+        await mockPriceFeed.updateAnswer(tokens('3'));
+        const currentRound = await prediction.currentEpoch();
+
+        await time.increase(10);
+        await prediction.executeRound();
+        await mockPriceFeed.updateAnswer(tokens('4'));
+        await time.increase(11);
+        await prediction.executeRound();
+
+        await mockPriceFeed.updateAnswer(tokens('4'));
+
+        const roundData = await prediction.rounds(currentRound);
+        assert.equal(roundData.cancelled, false);
+    })
+
+    it('price updated befor round start, round is cancelled', async () => {
+
+        await mockPriceFeed.updateAnswer(tokens('2'));
+
+        await time.increase(10);
+        await prediction.executeRound();
+        const currentRound = await prediction.currentEpoch();
+
+        await time.increase(10);
+        await prediction.executeRound();
+        await time.increase(11);
+        await prediction.executeRound();
+
+        const roundData = await prediction.rounds(currentRound);
+        assert.equal(roundData.cancelled, true);
+    })
+
+    it('price updated after end round, round is cancelled', async () => {
+
+        await mockPriceFeed.updateAnswer(tokens('2'));
+
+        await time.increase(10);
+        await prediction.executeRound();
+
+        await mockPriceFeed.updateAnswer(tokens('3'));
+        const currentRound = await prediction.currentEpoch();
+
+        await time.increase(10);
+        await prediction.executeRound();
+        await time.increase(11);
+        await prediction.executeRound();
+
+        await mockPriceFeed.updateAnswer(tokens('4'));
+
+        const roundData = await prediction.rounds(currentRound);
+        assert.equal(roundData.cancelled, true);
+    })
+
+    it('round executer gets raffle ticket', async () => {
+        let ticketCount;
+        await mockPriceFeed.updateAnswer(tokens('2'));
+
+        const raffleRound = await raffle.currentRound();
+
+        assert.equal(await raffle.ledger(1, owner), 0);
+
+        await time.increase(10);
+        await prediction.executeRound();
+
+        assert.equal(await raffle.ledger(1, owner), 10);
+    })
 });
